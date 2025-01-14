@@ -1,0 +1,107 @@
+---
+# Options for running analysis with golangci-lint.
+run:
+  # Timeout for analysis, e.g. 30s, 5m.
+  # Default: 1m
+  timeout: 5m
+  # Allow multiple parallel golangci-lint instances running.
+  # If false, golangci-lint acquires file lock on start.
+  # Default: false
+  allow-parallel-runners: true
+  # Allow multiple golangci-lint instances running,
+  # but serialize them around a lock.
+  # If false, golangci-lint exits with an error
+  # if it fails to acquire file lock on start.
+  # Default: false
+  allow-serial-runners: true
+
+# Output configuration options
+output:
+  # Make output more digestible with quickfix in vim/emacs/etc.
+  sort-results: true
+  print-issued-lines: false
+
+linters:
+  # We'll track the golangci-lint default linters manually
+  # instead of letting them change without our control.
+  disable-all: true
+  enable:
+    # golangci-lint defaults:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Format
+    - gofumpt
+    - gofmt
+
+    # Style
+    - nolintlint
+    - revive
+    - dupl
+    - gocritic
+    - goconst
+    - ireturn
+
+    # Complexity
+    # https://en.wikipedia.org/wiki/Cyclomatic_complexity
+    - gocognit
+    - maintidx
+    - nestif
+
+    # Bugs
+    - gosec
+    - gosmopolitan
+    - asasalint
+    - durationcheck
+    - errorlint
+    - exhaustive
+    - copyloopvar
+    - makezero
+
+linters-settings:
+  gofumpt:
+    # Module path which contains the source code being formatted.
+    # Default: ""
+    module-path: github.com/EelisK/gorm-shadow
+    # Choose whether to use the extra rules.
+    # Default: false
+    extra-rules: true
+  maintidx:
+    # Show functions with maintainability index lower than N.
+    # A high index indicates better maintainability
+    # (it's kind of the opposite of complexity).
+    # Default: 20
+    under: 20
+  govet:
+    # These govet checks are disabled by default, but they're useful.
+    enable:
+      - niliness
+      - reflectvaluecompare
+      - sortslice
+      - unusedwrite
+
+issues:
+  # Print all issues reported by all linters.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  # Don't ignore some of the issues that golangci-lint considers okay.
+  # This includes documenting all exported entities.
+  exclude-use-default: false
+
+  # Exclude some linters from running
+  exclude:
+    - exported
+    - package-comments
+
+  exclude-rules:
+    # staticcheck already has smarter checks for empty blocks.
+    # revive's empty-block linter has false positives.
+    # For example, as of writing this, the following is not allowed.
+    #   for foo() { }
+    - linters: [revive]
+      text: "empty-block: this block is empty, you can remove it"
