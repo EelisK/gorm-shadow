@@ -1,6 +1,8 @@
 package gormshadow
 
 import (
+	"context"
+	"reflect"
 	"strings"
 	"time"
 
@@ -11,15 +13,26 @@ import (
 )
 
 const (
-	gormCommit = "gorm:commit_or_rollback_transaction"
+	gormCommit  = "gorm:commit_or_rollback_transaction"
+	gormQuery   = "gorm:query"
+	gormPreload = "gorm:preload"
 
-	shadowCreate = "shadow:create"
-	shadowUpdate = "shadow:update"
-	shadowDelete = "shadow:delete"
+	shadowCreate  = "shadow:create"
+	shadowUpdate  = "shadow:update"
+	shadowDelete  = "shadow:delete"
+	shadowQuery   = "shadow:query"
+	shadowPreload = "shadow:preload"
 )
 
+// TimeMachine is an interface that provides the desired timestamp for querying historical data.
+type TimeMachine interface {
+	GetTime(ctx context.Context) (time.Time, error)
+}
+
 // Plugin creates shadow entries for models that implement the Descriptor interface.
-type Plugin struct{}
+type Plugin struct {
+	TimeMachine TimeMachine
+}
 
 // Name returns the name of the plugin.
 func (p *Plugin) Name() string {
@@ -41,6 +54,16 @@ func (p *Plugin) Initialize(db *gorm.DB) error {
 	}
 	if cb.Delete().Get(shadowDelete) == nil {
 		if err := cb.Delete().Before(gormCommit).Register(shadowDelete, p.BeforeDelete); err != nil {
+			return err
+		}
+	}
+	if cb.Query().Get(shadowQuery) == nil {
+		if err := cb.Query().Before(gormQuery).Register(shadowQuery, p.BeforeQuery); err != nil {
+			return err
+		}
+	}
+	if cb.Query().Get(shadowPreload) == nil {
+		if err := cb.Query().Before(gormPreload).Register(shadowPreload, p.BeforePreload); err != nil {
 			return err
 		}
 	}
@@ -118,6 +141,105 @@ func (p *Plugin) BeforeCommit(tx *gorm.DB) {
 			_ = shadowDB.AddError(err)
 		}
 	}
+}
+
+// BeforePreload alters the preloaded queries with the shadow table.
+func (p *Plugin) BeforePreload(db *gorm.DB) {
+	if db.Error != nil {
+		return
+	}
+
+	stmt := db.Statement
+	if stmt.Unscoped {
+		return
+	}
+
+	desc, ok := stmt.Model.(Descriptor)
+	if !ok || desc == nil {
+		return
+	}
+
+	timestamp, err := p.TimeMachine.GetTime(stmt.Context)
+	if err != nil || timestamp.IsZero() {
+		return
+	}
+
+	handledPreloads := make(map[string]struct{})
+	for preload, preloadConds := range stmt.Preloads {
+		preloadPath := strings.Split(preload, ".")
+		relations := stmt.Schema.Relationships.Relations
+		var modelRefType reflect.Type
+
+		// Find the model type of the last relationship
+		for i, subModelName := range preloadPath {
+			schema := relations[subModelName].FieldSchema
+			modelRefType = schema.ModelType
+			relations = schema.Relationships.Relations
+
+			// Get the full path of this partial preload
+			subPath := strings.Join(strings.Split(preload, ".")[:i+1], ".")
+
+			nestDesc, ok := reflect.New(modelRefType).Interface().(Descriptor)
+			if !ok {
+				continue
+			}
+
+			// Handled by BeforeQuery
+			if nestDesc.ShadowTable() == desc.ShadowTable() {
+				continue
+			}
+
+			if _, ok := handledPreloads[subPath]; ok {
+				continue
+			}
+
+			// Mark the preload as handled
+			handledPreloads[subPath] = struct{}{}
+
+			// Get the original, non-shadow, table name
+			originalTable := stmt.NamingStrategy.TableName(modelRefType.Name())
+
+			preloads := make([]interface{}, 0)
+
+			// Load the preload conditions for the last relationship
+			if subPath == preload {
+				preloads = append(preloads, preloadConds...)
+			}
+
+			preloads = append([]interface{}{
+				func(tx *gorm.DB) *gorm.DB {
+					p.alterStatement(tx, timestamp, schema, nestDesc.ShadowTable(), originalTable)
+					return tx
+				},
+			}, preloads...)
+
+			db.Statement.Preloads[subPath] = preloads
+		}
+	}
+}
+
+// BeforeQuery alters the query with the shadow table.
+func (p *Plugin) BeforeQuery(db *gorm.DB) {
+	if db.Error != nil {
+		return
+	}
+
+	stmt := db.Statement
+	if stmt.Unscoped {
+		return
+	}
+
+	desc, ok := stmt.Model.(Descriptor)
+	if !ok || desc == nil {
+		return
+	}
+
+	timestamp, err := p.TimeMachine.GetTime(stmt.Context)
+	if err != nil || timestamp.IsZero() {
+		return
+	}
+
+	p.alterStatement(db, timestamp, stmt.Schema, desc.ShadowTable(), stmt.Table)
 }
 
 // alterStatement alters the query to fetch the latest
