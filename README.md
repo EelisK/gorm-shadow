@@ -1,12 +1,12 @@
 # gorm-shadow 🦇
 
-`gorm-shadow` is a plugin for the [GORM](https://gorm.io) ORM that allows you to shadow changes to a model's fields.
-
 <div>
   <p align="center">
     <img src="pictures/shadows.jpeg" width="800">
   </p>
 </div>
+
+`gorm-shadow` is a plugin for [GORM](https://gorm.io) that allows you to shadow changes to a model's fields.
 
 ## User Guide 📚
 
