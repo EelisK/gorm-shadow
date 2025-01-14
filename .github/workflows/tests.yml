@@ -1,0 +1,34 @@
+---
+# yamllint disable rule:truthy
+name: Quality Assurance
+on:
+  push:
+    branches:
+      - "main"
+  pull_request:
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: "1.23"
+      - name: Run tests
+        run: make test
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: golangci-lint
+        uses: reviewdog/action-golangci-lint@v2
+        with:
+          go_version: "1.23"
+          golangci_lint_flags: "--config=.golangci.yaml"
