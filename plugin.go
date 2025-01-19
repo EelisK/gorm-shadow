@@ -57,6 +57,9 @@ func (p *Plugin) Initialize(db *gorm.DB) error {
 			return err
 		}
 	}
+	if p.TimeMachine == nil {
+		return nil
+	}
 	if cb.Query().Get(shadowQuery) == nil {
 		if err := cb.Query().Before(gormQuery).Register(shadowQuery, p.BeforeQuery); err != nil {
 			return err
